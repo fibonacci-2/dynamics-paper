@@ -1,0 +1,10 @@
+2026-02-11 11:41:24,511 | INFO | Loaded rows=2488789 cols=4 from gender-annotattor/reddust-gender.txt
+2026-02-11 11:41:25,262 | INFO | posts done: ok=1 fail=0
+2026-02-11 11:43:16,810 | INFO | Loaded rows=2488789 cols=4 from gender-annotattor/reddust-gender.txt
+2026-02-11 11:43:17,601 | INFO | posts done: ok=1 fail=0
+2026-02-11 11:45:55,468 | INFO | Loaded rows=2488789 cols=4 from gender-annotattor/reddust-gender.txt
+2026-02-11 11:45:56,194 | INFO | posts done: ok=1 fail=0 output=out_authors/posts_id_to_author.jsonl
+2026-02-11 11:47:43,312 | INFO | Loaded rows=2488789 cols=4 from gender-annotattor/reddust-gender.txt
+2026-02-11 11:47:44,082 | INFO | posts done: ok=1 fail=0 output=out_authors/posts_id_to_author.jsonl
+2026-02-11 11:50:29,049 | INFO | Loaded rows=2488789 cols=4 from gender-annotattor/reddust-gender.txt
+2026-02-11 11:50:29,633 | INFO | posts done: ok=0 fail=0 output=out_authors/posts_id_to_author.jsonl
