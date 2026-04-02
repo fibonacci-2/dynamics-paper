@@ -4,6 +4,8 @@ import argparse
 import time
 import os
 import logging
+from multiprocessing import Pool, Manager
+from functools import partial
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -33,16 +35,80 @@ def load_patterns(file_path, expansions):
 def load_expansions(file_path):
     return load_json(file_path)
 
-# Function to find self-diagnosed users with whitelist handling
-def find_self_diagnosed_users(user_data, positive_patterns, negative_patterns, bipolar_synonyms, condition_white):
-    diagnosed_users = []
-    unique_authors = set()
+# Process a single user's posts and return diagnosed status
+def process_user(user_entry, positive_patterns, negative_patterns, bipolar_synonyms, condition_white):
+    """Process a single user and return diagnosed posts if user meets criteria."""
+    username = user_entry.get('username', '')
+    posts = user_entry.get('posts', [])
+    diagnosed_posts = []
+    is_diagnosed = False
     synonym_match_counts = {synonym: 0 for synonym in bipolar_synonyms}
+    
+    for post in posts:
+        text = post.get('selftext', '')
+        author = post.get('author', username)
+        
+        bipolar_mentioned = False
+        negative_diagnosis_mentioned = False
+        positive_diagnosis_mentioned = False
 
+        # Check for negative diagnosis patterns
+        for pattern in negative_patterns:
+            if re.search(re.escape(pattern), text, re.IGNORECASE):
+                negative_diagnosis_mentioned = True
+                break
+
+        # Check for positive diagnosis patterns
+        for pattern in positive_patterns:
+            match = re.search(re.escape(pattern), text, re.IGNORECASE)
+            if match:
+                positive_diagnosis_mentioned = True
+                start_pos = match.start()
+                end_pos = match.end()
+
+                # Calculate the distance between the positive pattern and bipolar mention
+                for synonym in bipolar_synonyms:
+                    if synonym.lower() == "add":  # Special handling for "add"
+                        # Check if text matches any entry in the whitelist
+                        if any(whitelist_item in text.lower() for whitelist_item in condition_white):
+                            bipolar_mentioned = True
+                            synonym_match_counts[synonym] += 1
+                            break
+                        # Otherwise, require context like "attention deficit"
+                        add_context_pattern = r"(attention\s+deficit|adhd)"
+                        context_match = re.search(add_context_pattern, text, re.IGNORECASE)
+                        if not context_match:
+                            continue  # Skip "add" if context is not found
+
+                    synonym_match = re.search(r'\b' + re.escape(synonym) + r'\b', text, re.IGNORECASE)
+                    if synonym_match:
+                        synonym_start_pos = synonym_match.start()
+                        synonym_end_pos = synonym_match.end()
+                        distance = min(abs(start_pos - synonym_end_pos), abs(end_pos - synonym_start_pos))
+                        if distance <= 40:
+                            bipolar_mentioned = True
+                            synonym_match_counts[synonym] += 1
+                            break
+
+        # Only consider users who meet the criteria
+        if bipolar_mentioned and not negative_diagnosis_mentioned and positive_diagnosis_mentioned:
+            diagnosed_posts.append(post)
+            is_diagnosed = True
+    
+    return {
+        'username': username,
+        'is_diagnosed': is_diagnosed,
+        'diagnosed_posts': diagnosed_posts,
+        'synonym_counts': synonym_match_counts
+    }
+
+
+# Function to find self-diagnosed users with whitelist handling using multiprocessing
+def find_self_diagnosed_users(user_data, positive_patterns, negative_patterns, bipolar_synonyms, condition_white, num_cores=40):
     # Count total posts
     total_posts = sum(len(user.get('posts', [])) for user in user_data)
     
-    logging.info(f"Processing {len(user_data)} users with {total_posts} total posts")
+    logging.info(f"Processing {len(user_data)} users with {total_posts} total posts using {num_cores} cores")
     logging.info(f"Loaded {len(positive_patterns)} positive patterns")
     logging.info(f"Loaded {len(negative_patterns)} negative patterns")
     logging.info(f"Loaded {len(bipolar_synonyms)} condition synonyms")
@@ -51,97 +117,38 @@ def find_self_diagnosed_users(user_data, positive_patterns, negative_patterns, b
     logging.info(f"First 3 positive patterns: {positive_patterns[:3]}")
     logging.info(f"First 3 condition synonyms: {list(bipolar_synonyms)[:3]}")
     
-    posts_with_positive = 0
-    posts_with_negative = 0
-    posts_with_condition = 0
-    posts_with_text = 0
-    total_text_length = 0
-    post_count = 0
-
-    for user_entry in user_data:
-        username = user_entry.get('username', '')
-        posts = user_entry.get('posts', [])
-        
-        if username in unique_authors:
-            continue  # Skip if author is already processed
-        
-        for post in posts:
-            post_count += 1
-            if post_count % 10000 == 0:
-                logging.info(f"Processed {post_count}/{total_posts} posts. Found {len(unique_authors)} diagnosed users so far.")
-            
-            text = post.get('selftext', '')  # Adjust based on your JSON structure
-            author = post.get('author', username)  # Use username if author not in post
-            
-            # Log first post for debugging
-            if post_count == 1:
-                logging.info(f"First post keys: {list(post.keys())}")
-                logging.info(f"First post text length: {len(text)}")
-                logging.info(f"First post text preview: {text[:200] if text else 'EMPTY'}")
-            
-            if text:
-                posts_with_text += 1
-                total_text_length += len(text)
-
-            if username in unique_authors:
-                continue  # Skip if author is already processed
-
-            bipolar_mentioned = False
-            negative_diagnosis_mentioned = False
-            positive_diagnosis_mentioned = False
-
-            # Check for negative diagnosis patterns
-            for pattern in negative_patterns:
-                if re.search(re.escape(pattern), text, re.IGNORECASE):
-                    negative_diagnosis_mentioned = True
-                    posts_with_negative += 1
-                    break
-
-            # Check for positive diagnosis patterns
-            for pattern in positive_patterns:
-                match = re.search(re.escape(pattern), text, re.IGNORECASE)
-                if match:
-                    positive_diagnosis_mentioned = True
-                    posts_with_positive += 1
-                    start_pos = match.start()
-                    end_pos = match.end()
-
-                    # Calculate the distance between the positive pattern and bipolar mention
-                    for synonym in bipolar_synonyms:
-                        if synonym.lower() == "add":  # Special handling for "add"
-                            # Check if text matches any entry in the whitelist
-                            if any(whitelist_item in text.lower() for whitelist_item in condition_white):
-                                bipolar_mentioned = True
-                                synonym_match_counts[synonym] += 1
-                                posts_with_condition += 1
-                                break
-                            # Otherwise, require context like "attention deficit"
-                            add_context_pattern = r"(attention\s+deficit|adhd)"
-                            context_match = re.search(add_context_pattern, text, re.IGNORECASE)
-                            if not context_match:
-                                continue  # Skip "add" if context is not found
-
-                        synonym_match = re.search(r'\b' + re.escape(synonym) + r'\b', text, re.IGNORECASE)
-                        if synonym_match:
-                            synonym_start_pos = synonym_match.start()
-                            synonym_end_pos = synonym_match.end()
-                            distance = min(abs(start_pos - synonym_end_pos), abs(end_pos - synonym_start_pos))
-                            if distance <= 40:
-                                bipolar_mentioned = True
-                                synonym_match_counts[synonym] += 1
-                                posts_with_condition += 1
-                                break
-
-            # Only consider users who meet the criteria
-            if bipolar_mentioned and not negative_diagnosis_mentioned and positive_diagnosis_mentioned:
-                diagnosed_users.append(post)
-                unique_authors.add(username)
-
-    logging.info(f"Posts with positive patterns: {posts_with_positive}")
-    logging.info(f"Posts with negative patterns: {posts_with_negative}")
-    logging.info(f"Posts with condition mention: {posts_with_condition}")
-    logging.info(f"Posts with non-empty text: {posts_with_text}/{total_posts}")
-    logging.info(f"Average text length: {total_text_length/posts_with_text if posts_with_text > 0 else 0:.1f} chars")
+    # Create a partial function with fixed arguments
+    process_user_partial = partial(
+        process_user,
+        positive_patterns=positive_patterns,
+        negative_patterns=negative_patterns,
+        bipolar_synonyms=bipolar_synonyms,
+        condition_white=condition_white
+    )
+    
+    # Use multiprocessing to process users in parallel
+    diagnosed_users = []
+    unique_authors = set()
+    synonym_match_counts = {synonym: 0 for synonym in bipolar_synonyms}
+    
+    logging.info(f"Starting parallel processing with {num_cores} workers...")
+    start_pool_time = time.time()
+    
+    with Pool(processes=num_cores) as pool:
+        results = pool.map(process_user_partial, user_data, chunksize=max(1, len(user_data) // (num_cores * 4)))
+    
+    pool_time = time.time() - start_pool_time
+    logging.info(f"Parallel processing completed in {pool_time:.2f} seconds")
+    
+    # Aggregate results
+    for result in results:
+        if result['is_diagnosed']:
+            unique_authors.add(result['username'])
+            diagnosed_users.extend(result['diagnosed_posts'])
+            # Aggregate synonym counts
+            for synonym, count in result['synonym_counts'].items():
+                synonym_match_counts[synonym] += count
+    
     logging.info(f"Final diagnosed users: {len(unique_authors)}")
 
     return diagnosed_users, list(unique_authors), synonym_match_counts
@@ -151,7 +158,7 @@ def main():
     parser.add_argument('input_file', type=str, help='Path to the input JSON file containing cleaned posts')
     parser.add_argument('diagnosed_authors_file', type=str, help='Path to save the diagnosed authors JSON file')
     parser.add_argument('condition_name', type=str, help='Condition name to load patterns for')
-
+    parser.add_argument('num_cores', type=int, help='Number of cores to launch on')
     args = parser.parse_args()
 
     # Hardcoded paths to the pattern text files
@@ -179,8 +186,8 @@ def main():
     # Start timing the diagnosis process
     start_time = time.time()
 
-    # Find self-diagnosed users
-    diagnosed_posts, unique_authors, synonym_match_counts = find_self_diagnosed_users(posts_data, positive_patterns, negative_patterns, condition_syns, condition_white)
+    # Find self-diagnosed users with 40 cores
+    diagnosed_posts, unique_authors, synonym_match_counts = find_self_diagnosed_users(posts_data, positive_patterns, negative_patterns, condition_syns, condition_white, args.num_cores)
 
     # End timing the diagnosis process
     end_time = time.time()
