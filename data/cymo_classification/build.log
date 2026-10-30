@@ -1,0 +1,5 @@
+depression: 5365 with a date, 1055 pass the cohort rules with both periods
+paired 1055, unmatched 0
+train (22906, 54) {('post', 'control'): 6913, ('post', 'depression'): 6792, ('pre', 'control'): 4526, ('pre', 'depression'): 4675}
+val (4278, 54) {('post', 'control'): 1358, ('post', 'depression'): 1333, ('pre', 'control'): 793, ('pre', 'depression'): 794}
+test (5042, 54) {('post', 'control'): 1546, ('post', 'depression'): 1544, ('pre', 'control'): 956, ('pre', 'depression'): 996}
