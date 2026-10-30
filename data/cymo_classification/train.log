@@ -1,0 +1,38 @@
+all Lexical Complexity C=10
+all Readability C=0.1
+all Stylistics C=10
+all Syntactic Complexity C=0.1
+all All CYMO C=10
+all Activity baseline C=0.001
+pre Lexical Complexity C=10
+pre Readability C=1
+pre Stylistics C=1
+pre Syntactic Complexity C=10
+pre All CYMO C=1
+pre Activity baseline C=10
+post Lexical Complexity C=10
+post Readability C=0.1
+post Stylistics C=10
+post Syntactic Complexity C=0.01
+post All CYMO C=10
+post Activity baseline C=0.001
+tested_on                         post    pre
+trained_on feature_set                       
+all        Activity baseline     0.693  0.735
+           All CYMO              0.879  0.856
+           Lexical Complexity    0.785  0.777
+           Readability           0.755  0.744
+           Stylistics            0.866  0.849
+           Syntactic Complexity  0.826  0.792
+post       Activity baseline     0.705  0.742
+           All CYMO              0.879  0.854
+           Lexical Complexity    0.785  0.776
+           Readability           0.756  0.743
+           Stylistics            0.866  0.846
+           Syntactic Complexity  0.823  0.780
+pre        Activity baseline     0.676  0.720
+           All CYMO              0.873  0.855
+           Lexical Complexity    0.784  0.777
+           Readability           0.746  0.741
+           Stylistics            0.860  0.848
+           Syntactic Complexity  0.825  0.795
